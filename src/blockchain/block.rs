@@ -1,9 +1,11 @@
-use crate::helpers::bytes_to_byte_string;
+use crate::helpers::bytes_to_binary_string;
 use chrono::Utc;
 use log::info;
 use serde::{Deserialize, Serialize};
+use sha2::digest::consts::U32;
+use sha2::digest::core_api::{CoreWrapper, CtVariableCoreWrapper};
 use sha2::digest::Update;
-use sha2::{Digest, Sha256};
+use sha2::{Digest, OidSha256, Sha256, Sha256VarCore};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Block {
@@ -27,7 +29,7 @@ impl Block {
             data,
             timestamp,
             previous_hash,
-            hash
+            hash,
         }
     }
 
@@ -51,13 +53,13 @@ impl Block {
             let hash = Self::generate_hash(&id, prev_hash, data, &timestamp, &nonce);
 
             // Check if the hash starts with the prefix
-            let hash_byte_string = bytes_to_byte_string(&hash);
-            if hash_byte_string.starts_with(prefix) {
+            let binary_string = bytes_to_binary_string(&hash);
+            if binary_string.starts_with(prefix) {
                 // Success! Print out and return.
                 let hex_encoded_hash = hex::encode(&hash);
                 info!(
                     "Mined! Nonce: {}, Hash: {}, Hash Byte String: {}",
-                    nonce, hex_encoded_hash, hash_byte_string
+                    nonce, hex_encoded_hash, binary_string
                 );
                 return (nonce, hex_encoded_hash);
             }
@@ -77,14 +79,17 @@ impl Block {
     ) -> Vec<u8> {
         let data = serde_json::json!({
             "id": id,
-            "previous_hash": previous_hash,
+            "previous_hash": prev_hash,
             "data": data,
             "timestamp": timestamp,
             "nonce": nonce
         });
 
         let mut hasher = Sha256::new();
-        hasher.update(data.to_string().as_bytes());
+        <CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, U32, OidSha256>> as Update>::update(
+            &mut hasher,
+            data.to_string().as_bytes(),
+        );
 
         hasher.finalize().as_slice().to_owned()
     }
@@ -97,7 +102,7 @@ impl Block {
         }
 
         // Make sure the hash starts with PREFIX
-        if !bytes_to_byte_string(&hex::decode(&self.hash)?).starts_with(prefix) {
+        if !bytes_to_binary_string(&hex::decode(&self.hash)?).starts_with(prefix) {
             return Err(anyhow::anyhow!("Block {} has invalid difficulty", self.id));
         }
 
@@ -123,6 +128,7 @@ impl Block {
             return Err(anyhow::anyhow!(
                 "Block's previous hash {} is not the same as the calculated hash {}",
                 self.previous_hash,
+                calculated_hash
             ));
         }
 

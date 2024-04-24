@@ -1,2 +1,2 @@
-mod block;
-mod chain;
+pub mod block;
+pub mod ledger;
